@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meter Label Printer — Zebra ZT411</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="libs/xlsx.full.min.js"></script>
+  <script>
+    if (typeof XLSX === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');
+    }
+  </script>
+  <script src="libs/JsBarcode.all.min.js"></script>
+  <script>
+    if (typeof JsBarcode === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>');
+    }
+  </script>
+</head>
+<body>
+
+  <!-- ============== SIDEBAR ============== -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">⚡</div>
+      <div class="brand-text">
+        <span class="brand-title">Label Printer</span>
+        <span class="brand-sub">Zebra ZT411</span>
+      </div>
+    </div>
+
+    <!-- Printer Status -->
+    <div class="printer-status" id="printerStatus">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Checking printer...</span>
+    </div>
+
+    <!-- Nav -->
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-tab="tab-print">
+        <span class="nav-icon">🖨️</span>
+        <span>Print Label</span>
+      </button>
+      <button class="nav-item" data-tab="tab-pallets">
+        <span class="nav-icon">📦</span>
+        <span>Pallets</span>
+      </button>
+      <button class="nav-item" data-tab="tab-records">
+        <span class="nav-icon">📋</span>
+        <span>All Records</span>
+      </button>
+      <button class="nav-item" data-tab="tab-upload">
+        <span class="nav-icon">📂</span>
+        <span>Import Excel</span>
+      </button>
+    </nav>
+
+    <!-- Stats -->
+    <div class="sidebar-stats">
+      <div class="stat-item">
+        <span class="stat-num" id="totalRecordsBadge">0</span>
+        <span class="stat-label">Total Meters</span>
+      </div>
+      <div class="stat-item" style="margin-top:0.75rem;">
+        <span class="stat-num" id="totalPalletsBadge">0</span>
+        <span class="stat-label">Pallets</span>
+      </div>
+    </div>
+
+    <!-- Bottom Actions -->
+    <div class="sidebar-bottom">
+      <button id="btnLoadSample" class="side-btn side-btn-secondary">
+        📥 Load Sample Data
+      </button>
+      <button id="btnClearData" class="side-btn side-btn-danger">
+        🗑️ Clear All Data
+      </button>
+    </div>
+  </aside>
+
+  <!-- ============== MAIN AREA ============== -->
+  <main class="main-area">
+
+    <!-- Toast Notification -->
+    <div id="toastBar" class="toast-bar" style="display:none;"></div>
+
+    <!-- ===== PAGE: PRINT LABEL ===== -->
+    <div id="tab-print" class="page active">
+
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Print Label</h1>
+          <p class="page-desc">Scan or type a Meter Serial Number to instantly print its label</p>
+        </div>
+        <label class="auto-print-toggle">
+          <input type="checkbox" id="chkAutoPrint">
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-label">Auto-Print on Scan</span>
+        </label>
+      </div>
+
+      <!-- Scan Input -->
+      <div class="scan-hero">
+        <div class="scan-icon">🔍</div>
+        <div class="scan-field-wrap">
+          <input
+            type="text"
+            id="searchMeterSN"
+            class="scan-input"
+            placeholder="Scan barcode or type Serial Number and press Enter..."
+            autocomplete="off"
+            autofocus
+            spellcheck="false"
+          >
+          <button class="scan-clear-btn" id="btnClearScan" title="Clear">✕</button>
+        </div>
+        <div id="searchErrorBox" class="scan-error" style="display:none;"></div>
+      </div>
+
+      <!-- Result Area -->
+      <div class="result-grid">
+
+        <!-- Info Card -->
+        <div class="info-card" id="infoCard">
+          <div class="info-card-empty" id="infoEmpty">
+            <div class="empty-icon">🏷️</div>
+            <p>Scan a meter to see details here</p>
+          </div>
+          <div class="info-card-data" id="infoData" style="display:none;">
+            <div class="info-row">
+              <span class="info-label">Pallet</span>
+              <span class="info-value" id="detailPallet">—</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Box</span>
+              <span class="info-value" id="detailBox">—</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Meter SN</span>
+              <span class="info-value mono" id="detailMeterSN">—</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">ICCID</span>
+              <span class="info-value mono" id="detailICCID">—</span>
+            </div>
+            <!-- Print Buttons -->
+            <div class="print-btns">
+              <button id="btnPrintCurrent" class="btn-print-zebra">
+                <span class="print-icon">⚡</span>
+                <span class="print-text">
+                  <strong>Print on Zebra ZT411</strong>
+                  <small>Direct — No Dialog</small>
+                </span>
+              </button>
+              <button id="btnPrintBrowser" class="btn-print-browser">
+                <span>🖨️</span>
+                <span>Browser Print</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview Card -->
+        <div class="preview-card">
+          <div class="preview-header">
+            <span>Label Preview</span>
+            <div class="size-controls">
+              <select id="labelSizeSelect" class="mini-select">
+                <option value="50x25" selected>50 × 25 mm ✓</option>
+                <option value="50x30">50 × 30 mm</option>
+                <option value="60x40">60 × 40 mm</option>
+                <option value="70x50">70 × 50 mm</option>
+                <option value="custom">Custom...</option>
+              </select>
+              <select id="barcodeHeight" class="mini-select">
+                <option value="26">Barcode: Short</option>
+                <option value="32" selected>Barcode: Medium ✓</option>
+                <option value="38">Barcode: Tall</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Custom Size Row -->
+          <div id="customDimensionsBox" class="custom-dim-row" style="display:none;">
+            <input type="number" id="customWidth" class="dim-input" value="50" min="20" max="150" placeholder="Width mm">
+            <span>×</span>
+            <input type="number" id="customHeight" class="dim-input" value="25" min="15" max="150" placeholder="Height mm">
+            <span>mm</span>
+          </div>
+
+          <div class="preview-stage">
+            <div id="stickerPreview" class="sticker size-50x25">
+              <!-- Dynamically generated -->
+            </div>
+          </div>
+
+          <div class="preview-tip">
+            <strong>Browser Print tip:</strong> Set margins to <em>None</em>, paper to <em>50×25 mm</em>, disable headers &amp; footers.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== PAGE: PALLETS ===== -->
+    <div id="tab-pallets" class="page" style="display:none;">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Pallets</h1>
+          <p class="page-desc">Print all labels for a specific pallet at once</p>
+        </div>
+      </div>
+
+      <!-- Pallet Cards Grid -->
+      <div id="palletGrid" class="pallet-grid">
+        <div class="pallet-empty">No data loaded yet. Import an Excel file first.</div>
+      </div>
+    </div>
+
+    <!-- ===== PAGE: ALL RECORDS ===== -->
+    <div id="tab-records" class="page" style="display:none;">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">All Records</h1>
+          <p class="page-desc">Browse and print all loaded meters</p>
+        </div>
+        <button id="btnBatchPrint" class="btn-batch-print">
+          ⚡ Print All Labels
+        </button>
+      </div>
+
+      <div class="table-toolbar">
+        <input type="text" id="tableSearch" class="table-search-input" placeholder="Search by SN, ICCID, Pallet or Box...">
+        <span class="record-count" id="tableCountLabel">0 records</span>
+      </div>
+
+      <div class="table-wrap">
+        <table class="records-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Pallet</th>
+              <th>Box</th>
+              <th>Serial Number</th>
+              <th>ICCID</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="metersTableBody">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== PAGE: IMPORT EXCEL ===== -->
+    <div id="tab-upload" class="page" style="display:none;">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Import Excel File</h1>
+          <p class="page-desc">Upload an Excel or CSV file containing your meter data</p>
+        </div>
+      </div>
+
+      <div class="upload-area-wrap">
+        <input type="file" id="excelFileInput" accept=".xlsx,.xls,.csv" style="display:none;">
+        <div id="uploadDropzone" class="dropzone">
+          <div class="dropzone-icon">📊</div>
+          <div class="dropzone-title">Drop your Excel file here</div>
+          <div class="dropzone-sub">or click to browse — supports .xlsx, .xls, .csv</div>
+          <button class="btn-upload-browse" onclick="document.getElementById('excelFileInput').click()">
+            Browse File
+          </button>
+        </div>
+
+        <div class="file-requirements">
+          <h3>📋 Supported Column Formats</h3>
+          <div class="req-grid">
+            <div class="req-item req-item-highlight">
+              <div class="req-icon">✅</div>
+              <div>
+                <strong>New Format (4 columns):</strong><br>
+                <code>Device_pallet_number</code><br>
+                <code>Device_box_number</code><br>
+                <code>Serial_number</code><br>
+                <code>Module_ICCID</code>
+              </div>
+            </div>
+            <div class="req-item">
+              <div class="req-icon">🔄</div>
+              <div>
+                <strong>Legacy Format (2 columns):</strong><br>
+                <code>Meter SN</code> and <code>ICCID</code><br>
+                <span style="font-size:0.8em; color:#6b7280;">(Pallet/Box will be empty)</span>
+              </div>
+            </div>
+            <div class="req-item">
+              <div class="req-icon">🔢</div>
+              <div>
+                <strong>Leading zeros preserved</strong><br>
+                e.g. <code>062621000035277</code> stays intact
+              </div>
+            </div>
+            <div class="req-item">
+              <div class="req-icon">💾</div>
+              <div>
+                <strong>Auto-saved locally</strong><br>
+                No need to re-upload every session
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Print Root (hidden, used for browser fallback print) -->
+  <div id="print-root"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

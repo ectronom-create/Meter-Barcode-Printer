@@ -1,0 +1,32 @@
+# Python scratch/test files
+scratch_*.py
+test_*.py
+test_case_decode.py
+test_decode.py
+test_widths.py
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Test/debug images (generated artifacts)
+test_*.png
+by1_test.png
+by2_test.png
+by2_forceC.png
+by2_force_b.png
+test_F.png
+labelary_test.png
+
+# Local server
+server.py
+run.bat
+
+# Sample data
+sample_meters.xlsx
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
