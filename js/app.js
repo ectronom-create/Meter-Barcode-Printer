@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initStorage();
   initNav();
   initEventListeners();
+  initSettings();
   updateUI();
   checkZebraService();
   setInterval(checkZebraService, 4000);
@@ -506,7 +507,7 @@ async function tryDirectZebraPrint(records) {
     const res = await fetch('http://localhost:5000/api/print-zebra', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records })
+      body: JSON.stringify({ records, printSettings: getPrintSettings() })
     });
     if (res.ok) {
       showToast(`⚡ Sent ${records.length} label(s) to Zebra ZT411!`, 'success');
@@ -834,4 +835,141 @@ function escapeHtml(text) {
   return String(text)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+// =============================================
+//  PRINT SETTINGS
+// =============================================
+
+const SETTINGS_DEFAULTS = {
+  meter: {
+    widthMm:    50,
+    heightMm:   25,
+    byMod:      1.5,
+    bcHeightMm: 12,
+    iccidFont:  22,
+    snFont:     26,
+    topOffset:  0,
+    leftOffset: 0
+  },
+  pallet: {
+    widthMm:        30,
+    heightMm:       15,
+    palletNumFont:  20,
+    headerFont:     12,
+    totalFont:      14,
+    topOffset:      0,
+    leftOffset:     0
+  }
+};
+
+function getPrintSettings() {
+  const g = (id, def) => {
+    const el = document.getElementById(id);
+    if (!el) return def;
+    return el.tagName === 'SELECT' ? parseFloat(el.value) : parseFloat(el.value) || def;
+  };
+  return {
+    meter: {
+      widthMm:    g('s_meterWidth',     SETTINGS_DEFAULTS.meter.widthMm),
+      heightMm:   g('s_meterHeight',    SETTINGS_DEFAULTS.meter.heightMm),
+      byMod:      g('s_meterBY',        SETTINGS_DEFAULTS.meter.byMod),
+      bcHeightMm: g('s_meterBCHeight',  SETTINGS_DEFAULTS.meter.bcHeightMm),
+      iccidFont:  g('s_meterICCIDFont', SETTINGS_DEFAULTS.meter.iccidFont),
+      snFont:     g('s_meterSNFont',    SETTINGS_DEFAULTS.meter.snFont),
+      topOffset:  g('s_meterTopOffset', SETTINGS_DEFAULTS.meter.topOffset),
+      leftOffset: g('s_meterLeftOffset',SETTINGS_DEFAULTS.meter.leftOffset)
+    },
+    pallet: {
+      widthMm:       g('s_palletWidth',       SETTINGS_DEFAULTS.pallet.widthMm),
+      heightMm:      g('s_palletHeight',      SETTINGS_DEFAULTS.pallet.heightMm),
+      palletNumFont: g('s_palletNumFont',     SETTINGS_DEFAULTS.pallet.palletNumFont),
+      headerFont:    g('s_palletHeaderFont',  SETTINGS_DEFAULTS.pallet.headerFont),
+      totalFont:     g('s_palletTotalFont',   SETTINGS_DEFAULTS.pallet.totalFont),
+      topOffset:     g('s_palletTopOffset',   SETTINGS_DEFAULTS.pallet.topOffset),
+      leftOffset:    g('s_palletLeftOffset',  SETTINGS_DEFAULTS.pallet.leftOffset)
+    }
+  };
+}
+
+function applySettingsToForm(cfg) {
+  const s = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  s('s_meterWidth',      cfg.meter.widthMm);
+  s('s_meterHeight',     cfg.meter.heightMm);
+  s('s_meterBY',         cfg.meter.byMod);
+  s('s_meterBCHeight',   cfg.meter.bcHeightMm);
+  s('s_meterICCIDFont',  cfg.meter.iccidFont);
+  s('s_meterSNFont',     cfg.meter.snFont);
+  s('s_meterTopOffset',  cfg.meter.topOffset ?? 0);
+  s('s_meterLeftOffset', cfg.meter.leftOffset ?? 0);
+
+  s('s_palletWidth',     cfg.pallet.widthMm);
+  s('s_palletHeight',    cfg.pallet.heightMm);
+  s('s_palletNumFont',   cfg.pallet.palletNumFont);
+  s('s_palletHeaderFont',cfg.pallet.headerFont);
+  s('s_palletTotalFont', cfg.pallet.totalFont);
+  s('s_palletTopOffset', cfg.pallet.topOffset ?? 0);
+  s('s_palletLeftOffset',cfg.pallet.leftOffset ?? 0);
+}
+
+function savePrintSettings() {
+  try {
+    localStorage.setItem('print_settings_v1', JSON.stringify(getPrintSettings()));
+  } catch (e) { console.error('Settings save error:', e); }
+}
+
+function loadPrintSettings() {
+  try {
+    const raw = localStorage.getItem('print_settings_v1');
+    if (!raw) return SETTINGS_DEFAULTS;
+    const parsed = JSON.parse(raw);
+    return {
+      meter:  { ...SETTINGS_DEFAULTS.meter,  ...(parsed.meter  || {}) },
+      pallet: { ...SETTINGS_DEFAULTS.pallet, ...(parsed.pallet || {}) }
+    };
+  } catch (e) {
+    return SETTINGS_DEFAULTS;
+  }
+}
+
+function initSettings() {
+  const cfg = loadPrintSettings();
+  applySettingsToForm(cfg);
+
+  document.getElementById('btnSaveSettings')?.addEventListener('click', () => {
+    savePrintSettings();
+    showToast('✅ تم حفظ الإعدادات بنجاح!', 'success');
+  });
+
+  document.getElementById('btnResetSettings')?.addEventListener('click', () => {
+    applySettingsToForm(SETTINGS_DEFAULTS);
+    savePrintSettings();
+    showToast('↩️ تم استعادة الإعدادات الافتراضية.', 'info');
+  });
+
+  // Test Meter Print
+  document.getElementById('btnTestMeterPrint')?.addEventListener('click', async () => {
+    savePrintSettings();
+    const sampleRecord = currentRecord || {
+      meterSN: '062621000035277',
+      iccid:   '8996803620041204244F',
+      boxSuffix: '277'
+    };
+    showToast('⏳ جاري إرسال ملصق العداد للتجربة...', 'info');
+    const ok = await tryDirectZebraPrint([sampleRecord]);
+    if (!ok) showToast('⚠️ تعذر الاتصال بالطابعة. تأكد من تشغيل السيرفر والتوصيل.', 'warning');
+  });
+
+  // Test Pallet Print
+  document.getElementById('btnTestPalletPrint')?.addEventListener('click', async () => {
+    savePrintSettings();
+    const testRecord = [{
+      type: 'pallet_header',
+      palletNum: 'LK26214CSO10561',
+      totalLabels: 25
+    }];
+    showToast('⏳ جاري إرسال ملصق البليت للتجربة...', 'info');
+    const ok = await tryDirectZebraPrint(testRecord);
+    if (!ok) showToast('⚠️ تعذر الاتصال بالطابعة. تأكد من تشغيل السيرفر والتوصيل.', 'warning');
+  });
 }
