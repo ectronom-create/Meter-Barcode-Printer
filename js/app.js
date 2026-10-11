@@ -25,8 +25,14 @@ document.addEventListener('DOMContentLoaded', () => {
   initEventListeners();
   initSettings();
   updateUI();
-  checkZebraService();
-  setInterval(checkZebraService, 4000);
+
+  // Restore saved printer selection
+  selectedPrinterMode = localStorage.getItem('selected_printer_mode') || 'auto';
+  const sel = document.getElementById('printerSelect');
+  if (sel) sel.value = selectedPrinterMode;
+
+  checkPrinterServices();
+  setInterval(checkPrinterServices, 5000);
 
   if (metersData.length > 0) selectRecord(metersData[0]);
 });
@@ -171,6 +177,14 @@ function initEventListeners() {
   document.getElementById('btnPrintCurrent')?.addEventListener('click', () => printCurrentSticker(false));
   document.getElementById('btnPrintBrowser')?.addEventListener('click', () => printCurrentSticker(true));
   document.getElementById('btnBatchPrint')?.addEventListener('click', () => batchPrint(metersData));
+
+  // Printer Selector
+  document.getElementById('printerSelect')?.addEventListener('change', (e) => {
+    selectedPrinterMode = e.target.value;
+    localStorage.setItem('selected_printer_mode', selectedPrinterMode);
+    updatePrinterUI();
+    showToast(`Active printer: ${selectedPrinterMode.toUpperCase()}`, 'info');
+  });
 
   // Label Size
   document.getElementById('labelSizeSelect')?.addEventListener('change', () => {
@@ -453,28 +467,109 @@ window.printPallet = async function(palletName) {
 };
 
 // =============================================
-//  ZEBRA SERVICE
+//  PRINTER SERVICES (Zebra + Niimbot + Browser)
 // =============================================
-let isZebraDirectAvailable = false;
+let printerStatusData = {
+  zebra: { available: false, name: null },
+  niimbot: { available: false, port: null, model: null, battery: 0 }
+};
+let selectedPrinterMode = localStorage.getItem('selected_printer_mode') || 'auto';
 
-async function checkZebraService() {
+async function checkPrinterServices() {
   try {
-    const res = await fetch('http://localhost:5000/api/print-zebra', { method: 'OPTIONS' });
-    if (res.ok || res.status === 200) {
-      isZebraDirectAvailable = true;
-      updatePrinterStatus(true);
+    const res = await fetch('http://localhost:5000/api/status');
+    if (res.ok) {
+      printerStatusData = await res.json();
+      updatePrinterUI();
       return;
     }
-  } catch (e) { /* not running */ }
-  isZebraDirectAvailable = false;
-  updatePrinterStatus(false);
+  } catch (e) { /* server offline or mixed content */ }
+
+  printerStatusData = {
+    zebra: { available: false },
+    niimbot: { available: false }
+  };
+  updatePrinterUI();
 }
 
-function updatePrinterStatus(online) {
-  const dot  = document.getElementById('statusDot');
-  const text = document.getElementById('statusText');
-  if (dot)  dot.className  = 'status-dot ' + (online ? 'online' : 'offline');
-  if (text) text.textContent = online ? 'Zebra ZT411 — Ready' : 'Zebra not connected';
+// Backwards-compatible alias
+const checkZebraService = checkPrinterServices;
+
+function getEffectivePrinter() {
+  if (selectedPrinterMode === 'niimbot') return 'niimbot';
+  if (selectedPrinterMode === 'zebra') return 'zebra';
+  if (selectedPrinterMode === 'browser') return 'browser';
+
+  // Auto-detection: prefer Niimbot if connected, else Zebra, else browser
+  if (printerStatusData.niimbot && printerStatusData.niimbot.available) {
+    return 'niimbot';
+  }
+  if (printerStatusData.zebra && printerStatusData.zebra.available) {
+    return 'zebra';
+  }
+  return 'browser';
+}
+
+function updatePrinterUI() {
+  const dot   = document.getElementById('statusDot');
+  const text  = document.getElementById('statusText');
+  const badge = document.getElementById('printerBadge');
+  const sel   = document.getElementById('printerSelect');
+  const btnTitle = document.getElementById('printBtnTitle');
+  const btnSub   = document.getElementById('printBtnSub');
+
+  if (sel && sel.value !== selectedPrinterMode) {
+    sel.value = selectedPrinterMode;
+  }
+
+  const effective = getEffectivePrinter();
+  const niim = printerStatusData.niimbot || {};
+  const zeb  = printerStatusData.zebra || {};
+
+  // Update Badge
+  if (badge) {
+    badge.textContent = selectedPrinterMode === 'auto' ? `Auto: ${effective.toUpperCase()}` : selectedPrinterMode.toUpperCase();
+  }
+
+  // Update Status Dot and Description Text
+  if (dot && text) {
+    if (effective === 'niimbot') {
+      if (niim.available) {
+        dot.className = 'status-dot online';
+        text.textContent = `Niimbot B21 Ready (${niim.port} — ${niim.battery}%)`;
+      } else {
+        dot.className = 'status-dot offline';
+        text.textContent = niim.message || 'Niimbot disconnected';
+      }
+    } else if (effective === 'zebra') {
+      if (zeb.available) {
+        dot.className = 'status-dot online';
+        text.textContent = 'Zebra ZT411 Ready (Direct RAW)';
+      } else {
+        dot.className = 'status-dot offline';
+        text.textContent = 'Zebra not connected';
+      }
+    } else {
+      // Browser Mode
+      dot.className = 'status-dot';
+      dot.style.background = '#38bdf8';
+      text.textContent = 'Browser Print Dialog Mode';
+    }
+  }
+
+  // Update main print button text
+  if (btnTitle && btnSub) {
+    if (effective === 'niimbot') {
+      btnTitle.textContent = 'Print on Niimbot B21';
+      btnSub.textContent   = niim.available ? 'Direct USB — Fast' : 'Hardware Offline (Fallback)';
+    } else if (effective === 'zebra') {
+      btnTitle.textContent = 'Print on Zebra ZT411';
+      btnSub.textContent   = zeb.available ? 'Direct RAW ZPL' : 'Hardware Offline (Fallback)';
+    } else {
+      btnTitle.textContent = 'Browser Print';
+      btnSub.textContent   = 'Standard Print Dialog';
+    }
+  }
 }
 
 // =============================================
@@ -486,7 +581,7 @@ async function printCurrentSticker(forceBrowser = false) {
     return;
   }
   if (!forceBrowser) {
-    const ok = await tryDirectZebraPrint([currentRecord]);
+    const ok = await tryDirectPrint([currentRecord]);
     if (ok) return;
   }
   printRecords([currentRecord]);
@@ -498,24 +593,42 @@ async function batchPrint(records) {
     return;
   }
   if (!confirm(`Print all ${records.length} labels?`)) return;
-  const ok = await tryDirectZebraPrint(records);
+  const ok = await tryDirectPrint(records);
   if (!ok) printRecords(records);
 }
 
-async function tryDirectZebraPrint(records) {
+async function tryDirectPrint(records) {
+  const target = getEffectivePrinter();
+  if (target === 'browser') {
+    return false; // Route directly to browser print dialog
+  }
+
   try {
-    const res = await fetch('http://localhost:5000/api/print-zebra', {
+    const res = await fetch('http://localhost:5000/api/print', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records, printSettings: getPrintSettings() })
+      body: JSON.stringify({
+        printerType: target,
+        records: records,
+        printSettings: getPrintSettings()
+      })
     });
-    if (res.ok) {
-      showToast(`⚡ Sent ${records.length} label(s) to Zebra ZT411!`, 'success');
+    const result = await res.json().catch(() => ({}));
+    if (res.ok && result.success) {
+      const printerName = target === 'niimbot' ? 'Niimbot B21' : 'Zebra ZT411';
+      showToast(`⚡ ${result.message || `Sent ${records.length} label(s) to ${printerName}!`}`, 'success');
       return true;
+    } else if (result.error) {
+      showToast(`⚠️ ${result.error}`, 'warning');
     }
-  } catch (e) { /* fallback */ }
+  } catch (e) {
+    /* fallback to browser dialog */
+  }
   return false;
 }
+
+// Backwards-compatibility alias
+const tryDirectZebraPrint = tryDirectPrint;
 
 // Isolated iframe browser print
 function printRecords(recordsList) {

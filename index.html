@@ -26,14 +26,26 @@
       <div class="brand-icon">⚡</div>
       <div class="brand-text">
         <span class="brand-title">Label Printer</span>
-        <span class="brand-sub">Zebra ZT411</span>
+        <span class="brand-sub">Zebra & Niimbot</span>
       </div>
     </div>
 
-    <!-- Printer Status -->
-    <div class="printer-status" id="printerStatus">
-      <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">Checking printer...</span>
+    <!-- Printer Selector & Live Status -->
+    <div class="printer-selector-container">
+      <div class="printer-selector-header">
+        <label for="printerSelect">الطابعة النشطة / Active Printer</label>
+        <span class="printer-badge" id="printerBadge">Auto</span>
+      </div>
+      <select id="printerSelect" class="printer-select-dropdown">
+        <option value="auto">🔄 Auto Detect (تلقائي)</option>
+        <option value="niimbot">🏷️ Niimbot B21 (Direct USB)</option>
+        <option value="zebra">🖨️ Zebra ZT411 (Direct RAW)</option>
+        <option value="browser">🌐 Browser Dialog (المتصفح)</option>
+      </select>
+      <div class="printer-status" id="printerStatus">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Checking printers...</span>
+      </div>
     </div>
 
     <!-- Nav -->
@@ -153,8 +165,8 @@
               <button id="btnPrintCurrent" class="btn-print-zebra">
                 <span class="print-icon">⚡</span>
                 <span class="print-text">
-                  <strong>Print on Zebra ZT411</strong>
-                  <small>Direct — No Dialog</small>
+                  <strong id="printBtnTitle">Print on Niimbot B21</strong>
+                  <small id="printBtnSub">Direct Hardware — No Dialog</small>
                 </span>
               </button>
               <button id="btnPrintBrowser" class="btn-print-browser">
