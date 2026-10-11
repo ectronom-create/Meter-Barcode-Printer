@@ -19,12 +19,6 @@ by2_force_b.png
 test_F.png
 labelary_test.png
 
-# Local server
-server.py
-run.bat
-
-# Sample data
-sample_meters.xlsx
 
 # OS files
 .DS_Store
